@@ -19,6 +19,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.neighbors import NeighborhoodComponentsAnalysis
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix
 from yellowbrick.classifier import ConfusionMatrix
 from mlxtend.data import loadlocal_mnist
 
@@ -183,14 +184,42 @@ if __name__ == '__main__':
     d2_images, orl_lbls['lbls'], test_size = 0.33, random_state = 42)
 
     model = NearestCentroid()
+    model.fit(X_train, y_train)
 
-    nca = NeighborhoodComponentsAnalysis(random_state=42)
-    nca_pipe = Pipeline([('nca', nca), ('nnc', model)])
+    y_pred = model.predict(X_test)
 
-    nca_pipe.fit(X_train, y_train)
-    # model.fit(X_train, y_train)
+    cm = confusion_matrix(y_test, y_pred)
+    classes = model.classes_
+    cmap=plt.cm.Blues
+    fig, ax = plt.subplots()
+    im = ax.imshow(cm, interpolation='nearest',cmap=cmap)
+    ax.figure.colorbar(im, ax=ax)
 
-    print(nca_pipe.score(X_test,y_test))
+
+
+    ax.set(xticks=np.arange(cm.shape[1]),
+           yticks=np.arange(cm.shape[0]),
+           xticklabels=classes, yticklabels=classes,
+           title="title",
+           ylabel='True label',
+           xlabel='Predicted label')
+
+    # Rotate the tick labels and set their alignment.
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+             rotation_mode="anchor")
+
+    # Loop over data dimensions and create text annotations.
+    fmt = 'd'
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], fmt),
+                    ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    fig.tight_layout()
+
+
+
 
     # make_confusion_matrix(model, X_train, y_train, X_test, y_test, 'ORL')
     '''
