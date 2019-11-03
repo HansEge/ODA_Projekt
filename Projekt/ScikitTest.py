@@ -2,11 +2,22 @@ import numpy as np
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
+import scipy.io as sio
+
+'''
+# Used for ORL images
+import cv2 as cv
+from PIL import Image
+'''
+
+# Skal åbenbart bruges til 3D plot
 from mpl_toolkits.mplot3d import Axes3D
 
-from sklearn import svm, metrics, preprocessing, neighbors
+from sklearn.pipeline import Pipeline
+from sklearn.neighbors.nearest_centroid import NearestCentroid
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+from sklearn.neighbors import NeighborhoodComponentsAnalysis
 from sklearn.model_selection import train_test_split
 from yellowbrick.classifier import ConfusionMatrix
 from mlxtend.data import loadlocal_mnist
@@ -19,7 +30,6 @@ def idx2csv(X, y, name):
                    X=X, delimiter=',', fmt='%d')
         np.savetxt(fname='C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/y_' + name + '.csv',
                    X=y, delimiter=',', fmt='%d')
-
         return
 
 
@@ -32,20 +42,19 @@ def load_csv():
     return [X_train, y_train, X_test, y_test]
 
 
-def load_idx():
+def load_idx(path):
     X_train, y_train = loadlocal_mnist(
-        images_path='C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/train-images-idx3-ubyte',
-        labels_path='C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/train-labels-idx1-ubyte')
+        images_path= path + 'train-images-idx3-ubyte',
+        labels_path= path + 'train-labels-idx1-ubyte')
 
     X_test, y_test = loadlocal_mnist(
-        images_path='C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/t10k-images-idx3-ubyte',
-        labels_path='C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/t10k-labels-idx1-ubyte')
+        images_path= path + 't10k-images-idx3-ubyte',
+        labels_path= path + 't10k-labels-idx1-ubyte')
     return (X_train, y_train, X_test, y_test)
 
 
 def make_confusion_matrix(model, X_tra, y_tra, X_te, y_te):
-    clas = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    cm = ConfusionMatrix(model, classes=clas)
+    cm = ConfusionMatrix(model, classes=model.classes_)
     cm.fit(X_tra, y_tra)
     cm.score(X_te, y_te)
 
@@ -68,8 +77,13 @@ def performPCA(X, y, dim):
 
     if dim == 2:
         principalDf = pd.DataFrame(data=principalComponents, columns=['Principle component 1', 'Principle component 2'])
+
     if dim == 3:
         principalDf = pd.DataFrame(data=principalComponents, columns=['Principle component 1', 'Principle component 2', 'Principle component 3'])
+
+    else:
+        print("Wrong dimensions in performPCA")
+        return
 
     labelsDf = pd.DataFrame(data=y, columns=['Numbers'])
     finalDf = pd.concat([principalDf, labelsDf[['Numbers']]], axis = 1)
@@ -119,32 +133,73 @@ def plt_pca_3d(pca_df):
 
     return
 
+# Convert ORL images to a 1x400 vector with each element containing a 40x30 array
+def convert_orl_to_vector(orl_data):
+
+    a = orl_data['data']
+
+    height = 39
+    column = 0
+    pic_index = 0
+    j = 0
+    image = np.zeros([40, 30])
+    images = list(range(1, 401))
+
+    for k in range(len(images)):
+        for i in range(len(a)):
+            image[j][column] = a[i][pic_index]
+            j = j + 1
+            if i >= height:
+                column = column + 1
+                height = height + 40
+                j = 0
+        images[k] = image
+        height = 39
+        column = 0
+        pic_index = pic_index + 1
+        image = np.zeros([40, 30])
+    return images
+
 
 if __name__ == '__main__':
+
+    '''
     # Load MNIST data
-    X_train, y_train, X_test, y_test = load_idx()
+    print("Load MNIST data")
+    path = "C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/"
+    X_train, y_train, X_test, y_test = load_idx(path)
+    '''
 
-    # Scale data
-    print("Scaling data")
-    # X_train, X_test= scale_mnist(X_train, X_test)
+    print("Load ORL data")
+    orl_data = sio.loadmat("C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/orl_data.mat")
+    orl_lbls = sio.loadmat("C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/orl_lbls.mat")
 
-    print("Perform PCA")
-    pca_df = performPCA(X_train,y_train,3)
-    plt_pca_3d(pca_df)
+    images = np.array(convert_orl_to_vector(orl_data))
 
+    nsamples, nx, ny = images.shape
+    d2_images = images.reshape((nsamples, nx * ny))
 
+    X_train, X_test, y_train, y_test = train_test_split(
+    d2_images, orl_lbls['lbls'], test_size = 0.33, random_state = 42)
 
-'''
+    model = NearestCentroid()
 
-    clf = neighbors.KNeighborsClassifier()
-    clf.fit(X_train, y_train)
+    nca = NeighborhoodComponentsAnalysis(random_state=42)
+    nca_pipe = Pipeline([('nca', nca), ('nnc', model)])
 
-    print(clf)
+    nca_pipe.fit(X_train, y_train)
+    # model.fit(X_train, y_train)
 
-    y_expect = y_test
-    y_pred = clf.predict(X_test)
+    print(nca_pipe.score(X_test,y_test))
 
-    print(metrics.classification_report(y_expect, y_pred))
-
-    make_confusion_matrix(clf, X_train, y_train, X_test, y_test)
-'''
+    # make_confusion_matrix(model, X_train, y_train, X_test, y_test, 'ORL')
+    '''
+    fig = plt.figure(figsize=(8, 8))
+    columns = 5
+    rows = 5
+    for i in range(1, columns * rows + 1):
+        img = images[i]
+        fig.add_subplot(rows, columns, i)
+        plt.imshow(img)
+    plt.show()
+    '''
