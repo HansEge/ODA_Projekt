@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import matplotlib.pyplot as plt
 import scipy.io as sio
+from sklearn import neighbors
 
 '''
 # Used for ORL images
@@ -15,8 +16,9 @@ from mpl_toolkits.mplot3d import Axes3D
 
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors.nearest_centroid import NearestCentroid
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.decomposition import PCA
+from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import NeighborhoodComponentsAnalysis
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix
@@ -45,18 +47,19 @@ def load_csv():
 
 def load_idx(path):
     X_train, y_train = loadlocal_mnist(
-        images_path= path + 'train-images-idx3-ubyte',
-        labels_path= path + 'train-labels-idx1-ubyte')
+        images_path=path + 'train-images-idx3-ubyte',
+        labels_path=path + 'train-labels-idx1-ubyte')
 
     X_test, y_test = loadlocal_mnist(
-        images_path= path + 't10k-images-idx3-ubyte',
-        labels_path= path + 't10k-labels-idx1-ubyte')
+        images_path=path + 't10k-images-idx3-ubyte',
+        labels_path=path + 't10k-labels-idx1-ubyte')
     return (X_train, y_train, X_test, y_test)
 
 
 def make_confusion_matrix(model, X_tra, y_tra, X_te, y_te):
+
     cm = ConfusionMatrix(model, classes=model.classes_)
-    cm.fit(X_tra, y_tra)
+    cm.fit(X_tra, np.ravel(y_tra, order = 'C'))
     cm.score(X_te, y_te)
 
     cm.show()
@@ -69,9 +72,10 @@ def scale_mnist(Xtrain, Xtest):
     Xtest = StandardScaler().fit_transform(Xtest)
     return Xtrain, Xtest
 
+
 # https://towardsdatascience.com/pca-using-python-scikit-learn-e653f8989e60
 # Perform PCA to images and concat with labels
-def performPCA(X, y, dim):
+def perform_pca(X, y, dim):
     pca = PCA(n_components=dim)
 
     principalComponents = pca.fit_transform(X)
@@ -80,20 +84,22 @@ def performPCA(X, y, dim):
         principalDf = pd.DataFrame(data=principalComponents, columns=['Principle component 1', 'Principle component 2'])
 
     if dim == 3:
-        principalDf = pd.DataFrame(data=principalComponents, columns=['Principle component 1', 'Principle component 2', 'Principle component 3'])
+        principalDf = pd.DataFrame(data=principalComponents, columns=['Principle component 1', 'Principle component 2',
+                                                                      'Principle component 3'])
 
     else:
         print("Wrong dimensions in performPCA")
         return
 
     labelsDf = pd.DataFrame(data=y, columns=['Numbers'])
-    finalDf = pd.concat([principalDf, labelsDf[['Numbers']]], axis = 1)
+    finalDf = pd.concat([principalDf, labelsDf[['Numbers']]], axis=1)
 
     return finalDf
 
+
 # https://towardsdatascience.com/pca-using-python-scikit-learn-e653f8989e60
 # Make plot of numbers with two principle components (2D)
-def plt_pca(pca_df):
+def plt_pca_MNIST(pca_df):
     fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(1, 1, 1)
     ax.set_xlabel('Principal Component 1', fontsize=15)
@@ -111,8 +117,9 @@ def plt_pca(pca_df):
     ax.grid()
     return
 
+
 # 3D scatterplot for the lulz
-def plt_pca_3d(pca_df):
+def plt_pca__MNIST_3d(pca_df):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.set_xlabel('Principal Component 1', fontsize=15)
@@ -134,9 +141,17 @@ def plt_pca_3d(pca_df):
 
     return
 
+
+def load_orl(path):
+    print("Load ORL data")
+    orl_data = sio.loadmat(path + "orl_data.mat")
+    orl_lbls = sio.loadmat(path + "orl_lbls.mat")
+
+    return orl_data, orl_lbls
+
+
 # Convert ORL images to a 1x400 vector with each element containing a 40x30 array
 def convert_orl_to_vector(orl_data):
-
     a = orl_data['data']
 
     height = 39
@@ -159,76 +174,119 @@ def convert_orl_to_vector(orl_data):
         column = 0
         pic_index = pic_index + 1
         image = np.zeros([40, 30])
-    return images
 
+        orl = np.array(images)
 
-if __name__ == '__main__':
+    return orl
 
-    '''
-    # Load MNIST data
-    print("Load MNIST data")
-    path = "C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/"
-    X_train, y_train, X_test, y_test = load_idx(path)
-    '''
+# TODO make this have the same structure as nnc_classify
+# Perform Nearest class centroid classifier of original data (NOT PCA)
+def ncc_classify(X_tr, y_tr, X_te, dataset):
+    if (dataset == 'orl'):
+        nsamples, nx, ny = X_tr.shape
+        d2_images = X_tr.reshape((nsamples, nx * ny))
 
-    print("Load ORL data")
-    orl_data = sio.loadmat("C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/orl_data.mat")
-    orl_lbls = sio.loadmat("C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/orl_lbls.mat")
-
-    images = np.array(convert_orl_to_vector(orl_data))
-
-    nsamples, nx, ny = images.shape
-    d2_images = images.reshape((nsamples, nx * ny))
-
-    X_train, X_test, y_train, y_test = train_test_split(
-    d2_images, orl_lbls['lbls'], test_size = 0.33, random_state = 42)
+        X_train, X_test, y_train, y_test = train_test_split(
+            d2_images, y_tr['lbls'], test_size=0.33, random_state=42)
 
     model = NearestCentroid()
     model.fit(X_train, y_train)
 
+    if (dataset == 'orl'):
+        y_pred = model.predict(X_test)
+
+    y_pred = model.predict(X_te)
+
+    return model, y_pred
+
+
+# Perform Nearest neighbor classifier of original data (NOT PCA)
+def nnc_classify(dataset):
+
+    if dataset != "MNIST" and dataset != "ORL":
+        print("Typo in nnc_classify")
+        return -1, -1
+
+    if dataset == "ORL":
+        path = "C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/"
+        orl_data, orl_lbls = load_orl(path)
+        orl_data = convert_orl_to_vector(orl_data)
+
+        model, y_pred = nnc_orl(orl_data, orl_lbls)
+
+    if dataset == "MNIST":
+        path = "C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/"
+        X_train, y_train, X_test, y_test = load_idx(path)
+
+        model = neighbors.KNeighborsClassifier(n_jobs=-1)
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        make_confusion_matrix(model, X_train, y_train, X_test, y_test)
+
+    return model, y_pred
+
+
+def nnc_orl(data, labls):
+
+    # Reshape data
+    nsamples, nx, ny = data.shape
+    d2_images = data.reshape((nsamples, nx * ny))
+
+    # Split data into 70% training 30% testing. The stratify option makes sure to split each class the same way, i.e
+    # use 7 pictures of class 1 for training and 3 pictures for testing.
+    X_train, X_test, y_train, y_test = train_test_split(
+        d2_images, labls['lbls'], test_size=0.30, random_state=41, stratify=labls['lbls'])
+
+    # Make sure labels are in correct format using LabelEncoder
+    encoder = LabelEncoder()
+    y_train = encoder.fit_transform(y_train)
+
+    # Train model
+    model = neighbors.KNeighborsClassifier(n_jobs=-1)
+
+    new_params = find_best_parameters(model, X_train, y_train)
+
+
+    model = model.set_params(n_neighbors = new_params['n_neighbors'], algorithm = new_params['algorithm'])
+
+    model.fit(X_train, y_train)
+
+    # Test model
     y_pred = model.predict(X_test)
 
-    cm = confusion_matrix(y_test, y_pred)
-    classes = model.classes_
-    cmap=plt.cm.Blues
-    fig, ax = plt.subplots()
-    im = ax.imshow(cm, interpolation='nearest',cmap=cmap)
-    ax.figure.colorbar(im, ax=ax)
+    # How did we do?
+    y_test = encoder.fit_transform(y_test)
+    make_confusion_matrix(model, X_train, y_train, X_test, y_test)
+
+    # Return stuff
+    return model, y_pred
+
+# TODO Fejl med gridsearch. score bruges ikke rigtigt.
+def find_best_parameters(model, X_train, y_train):
+    params = {
+        'n_neighbors': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        'algorithm': ['ball_tree', 'auto', 'kd_tree', 'brute']
+    }
+    score = ['precision', 'recall']
+
+    clf = GridSearchCV(model, param_grid=params, cv=5, scoring='%s_macro' % score)
+    clf.fit(X_train, y_train)
+
+    mean = clf.cv_results_['mean_test_score']
+    print(mean)
+
+    print(clf.best_params_)
+
+    return clf.best_params_
+
+
+if __name__ == '__main__':
+
+    # a = input("Type in either 'MNIST' or 'ORL'.")
+    model, y_pred = nnc_classify('ORL')
 
 
 
-    ax.set(xticks=np.arange(cm.shape[1]),
-           yticks=np.arange(cm.shape[0]),
-           xticklabels=classes, yticklabels=classes,
-           title="title",
-           ylabel='True label',
-           xlabel='Predicted label')
+    print(model)
 
-    # Rotate the tick labels and set their alignment.
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
-             rotation_mode="anchor")
-
-    # Loop over data dimensions and create text annotations.
-    fmt = 'd'
-    thresh = cm.max() / 2.
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            ax.text(j, i, format(cm[i, j], fmt),
-                    ha="center", va="center",
-                    color="white" if cm[i, j] > thresh else "black")
-    fig.tight_layout()
-
-
-
-
-    # make_confusion_matrix(model, X_train, y_train, X_test, y_test, 'ORL')
-    '''
-    fig = plt.figure(figsize=(8, 8))
-    columns = 5
-    rows = 5
-    for i in range(1, columns * rows + 1):
-        img = images[i]
-        fig.add_subplot(rows, columns, i)
-        plt.imshow(img)
-    plt.show()
-    '''
+    print(y_pred)
