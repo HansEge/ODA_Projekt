@@ -135,6 +135,7 @@ def plt_pca_3d(pca_df):
     return
 
 # Convert ORL images to a 1x400 vector with each element containing a 40x30 array
+# This is a stupid way to do it, but my brain didn't work at the time
 def convert_orl_to_vector(orl_data):
 
     a = orl_data['data']
