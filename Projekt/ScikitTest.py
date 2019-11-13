@@ -185,7 +185,6 @@ def plt_pca__MNIST_3d(pca_df):
 
 
 # Convert ORL images to a 1x400 vector with each element containing a 40x30 array
-# This is a stupid way to do it, but my brain didn't work at the time
 def convert_orl_to_vector(orl_data):
     a = orl_data['data']
 
@@ -313,7 +312,7 @@ def perceptron_bp(X_train, y_train, eta):
             else:
                 li[j][i] = -1
 
-    f = np.transpose(li).dot(g)
+    f = np.multiply(g, li)
     return
 
 
