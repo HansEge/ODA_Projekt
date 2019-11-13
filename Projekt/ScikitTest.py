@@ -17,7 +17,9 @@ from mpl_toolkits.mplot3d import Axes3D
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors.nearest_centroid import NearestCentroid
 from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import classification_report, SCORERS, make_scorer
 from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
 from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import NeighborhoodComponentsAnalysis
 from sklearn.model_selection import train_test_split
@@ -56,11 +58,55 @@ def load_idx(path):
     return (X_train, y_train, X_test, y_test)
 
 
-def make_confusion_matrix(model, X_tra, y_tra, X_te, y_te):
+def load_orl(path):
+    print("Load ORL data")
+    orl_data = sio.loadmat(path + "orl_data.mat")
+    orl_lbls = sio.loadmat(path + "orl_lbls.mat")
 
-    cm = ConfusionMatrix(model, classes=model.classes_)
-    cm.fit(X_tra, np.ravel(y_tra, order = 'C'))
-    cm.score(X_te, y_te)
+    X = np.array(orl_data['data'])
+    y = np.array(orl_lbls['lbls'])
+    y = np.transpose(y)
+
+    y = y.reshape(400)
+
+    X = np.transpose(X)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.30, random_state=41, stratify=y)
+
+    y_train = np.transpose(y_train)
+    y_test = np.transpose(y_test)
+
+    return X_train, y_train, X_test, y_test
+
+# TODO Something is wrong here... "Could not decode [1 2 3... 40] to [1 2 3... 40] labels."
+def make_confusion_matrix(model, X_train, y_train, X_test, y_test):
+
+    encoder = LabelEncoder()
+    y_train = encoder.fit_transform(y_train)
+
+    classes = list()
+
+    for a in np.unique(y_train):
+        classes.append(a)
+
+    #For some reason it gives an error if not done this way...
+    if len(classes) > 10:
+        classes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+               24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40]
+    else:
+        classes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+    encoder = LabelEncoder()
+    encoder.fit(y_train)
+    y_train = encoder.transform(y_train)
+
+    cm = ConfusionMatrix(model, classes=classes)
+    cm.fit(X_train, y_train)
+
+    encoder.fit(y_train)
+    y_test = encoder.transform(y_test)
+
+    cm.score(X_test, y_test)
 
     cm.show()
 
@@ -74,7 +120,7 @@ def scale_mnist(Xtrain, Xtest):
 
 
 # https://towardsdatascience.com/pca-using-python-scikit-learn-e653f8989e60
-# Perform PCA to images and concat with labels
+# Perform PCA to X and concat with labels
 def perform_pca(X, y, dim):
     pca = PCA(n_components=dim)
 
@@ -86,10 +132,6 @@ def perform_pca(X, y, dim):
     if dim == 3:
         principalDf = pd.DataFrame(data=principalComponents, columns=['Principle component 1', 'Principle component 2',
                                                                       'Principle component 3'])
-
-    else:
-        print("Wrong dimensions in performPCA")
-        return
 
     labelsDf = pd.DataFrame(data=y, columns=['Numbers'])
     finalDf = pd.concat([principalDf, labelsDf[['Numbers']]], axis=1)
@@ -142,14 +184,6 @@ def plt_pca__MNIST_3d(pca_df):
     return
 
 
-def load_orl(path):
-    print("Load ORL data")
-    orl_data = sio.loadmat(path + "orl_data.mat")
-    orl_lbls = sio.loadmat(path + "orl_lbls.mat")
-
-    return orl_data, orl_lbls
-
-
 # Convert ORL images to a 1x400 vector with each element containing a 40x30 array
 # This is a stupid way to do it, but my brain didn't work at the time
 def convert_orl_to_vector(orl_data):
@@ -181,113 +215,171 @@ def convert_orl_to_vector(orl_data):
     return orl
 
 # TODO make this have the same structure as nnc_classify
-# Perform Nearest class centroid classifier of original data (NOT PCA)
-def ncc_classify(X_tr, y_tr, X_te, dataset):
-    if (dataset == 'orl'):
-        nsamples, nx, ny = X_tr.shape
-        d2_images = X_tr.reshape((nsamples, nx * ny))
-
-        X_train, X_test, y_train, y_test = train_test_split(
-            d2_images, y_tr['lbls'], test_size=0.33, random_state=42)
+# Perform Nearest class centroid classifier of original data
+def ncc_classify(X_train, y_train, X_test, y_test):
 
     model = NearestCentroid()
+    params = {
+        'n_neighbors': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        'algorithm': ['kd_tree', 'auto', 'ball_tree', 'brute']
+    }
+
+    new_params = find_best_parameters(model, X_train, y_train, params)
+    model.set_params(n_neighbors=new_params['n_neighbors'], algorithm=new_params['algorithm'])
+
     model.fit(X_train, y_train)
 
-    if (dataset == 'orl'):
-        y_pred = model.predict(X_test)
-
-    y_pred = model.predict(X_te)
+    y_pred = model.predict(X_test)
+    make_confusion_matrix(model, X_train, y_train, X_test, y_test)
 
     return model, y_pred
 
 
 # Perform Nearest neighbor classifier of original data (NOT PCA)
-def nnc_classify(dataset):
+def nnc_classify(X_train, y_train, X_test, y_test):
 
-    if dataset != "MNIST" and dataset != "ORL":
-        print("Typo in nnc_classify")
-        return -1, -1
+        params = {
+            'n_neighbors': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            'algorithm': ['kd_tree', 'auto', 'ball_tree', 'brute']
+        }
 
-    if dataset == "ORL":
-        path = "C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/"
-        orl_data, orl_lbls = load_orl(path)
-        orl_data = convert_orl_to_vector(orl_data)
+        model = neighbors.KNeighborsClassifier(n_neighbors=2, algorithm='auto')
+        new_params = find_best_parameters(model, X_train[:100], y_train[:100], params)
 
-        model, y_pred = nnc_orl(orl_data, orl_lbls)
+        model = model.set_params(n_neighbors=new_params['n_neighbors'], algorithm=new_params['algorithm'])
 
-    if dataset == "MNIST":
-        path = "C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/"
-        X_train, y_train, X_test, y_test = load_idx(path)
-
-        model = neighbors.KNeighborsClassifier(n_jobs=-1)
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
         make_confusion_matrix(model, X_train, y_train, X_test, y_test)
 
-    return model, y_pred
+        return model, y_pred
 
 
-def nnc_orl(data, labls):
+def ncc_sub(k, X_train, y_train, X_test):
+    # Make dict with classes and k number empty lists
+    centroids = {int(a) : list() for a in np.unique(y_train)}
+    for i in range(len(X_train)):
+        centroids[y_train[i]].append(X_train[i])
 
-    # Reshape data
-    nsamples, nx, ny = data.shape
-    d2_images = data.reshape((nsamples, nx * ny))
+    # Make K centroids for each class
+    for key in centroids:
+        centroids[key] = KMeans(n_clusters=k, init='random', n_init=10).fit(np.array(centroids[key])).cluster_centers_
 
-    # Split data into 70% training 30% testing. The stratify option makes sure to split each class the same way, i.e
-    # use 7 pictures of class 1 for training and 3 pictures for testing.
+    labels = list()
+
+    # Calculate distance between subclass and datapoint. Add lowest distance subclass to labels list.
+    for i in range(len(X_test)):
+        minDist = np.inf
+        popflag = False
+        for key in centroids:
+            for j in range(centroids[key].shape[0]):
+                d = np.sqrt(np.linalg.norm(X_test[i] - centroids[key][j]))
+                if d < minDist:
+                    minDist = d
+                    if popflag:
+                        labels.pop(i)
+                        popflag = False
+                    # This is done to see which subclass is picked. Can only be seen when debugging
+                    labels.insert(i, str(key) + "_" + str(j))
+                    popflag = True
+
+        # Remove subclasses and make int
+        labels[i] = int(labels[i].split('_')[0])
+
+    return labels
+
+
+def perceptron_bp(X_train, y_train, eta):
+
+    # Initial weights and bias
+    w = np.zeros((len(np.unique(y_train)), X_train.shape[1]))
+    x = np.ones((len(X_train), 1))
+    w0 = np.zeros((len(w), 1))
+    li = np.zeros((40, len(X_train)))
+
+    # Make decision function more compact
+    x_tilde = np.concatenate((x, X_train),1)
+    w_tilde = np.concatenate((w0, w), 1)
+
+    w_tilde = np.random.rand(w_tilde.shape[0], w_tilde.shape[1]) - 0.5
+
+    g = w_tilde.dot(np.transpose(x_tilde))
+
+    # Determine classes
+    for i in range(li.shape[1]):
+        for j in range(40):
+            if y_train[i] == j:
+                li[j][i] = 1
+            else:
+                li[j][i] = -1
+
+    f = np.transpose(li).dot(g)
+    return
+
+
+# TODO Fejl med gridsearch. score bruges ikke rigtigt.
+# https://scikit-learn.org/stable/auto_examples/model_selection/plot_grid_search_digits.html
+def find_best_parameters(model, X, y, params):
+
     X_train, X_test, y_train, y_test = train_test_split(
-        d2_images, labls['lbls'], test_size=0.30, random_state=41, stratify=labls['lbls'])
+        X, y, test_size=0.5, random_state=0, stratify=y)
 
-    # Make sure labels are in correct format using LabelEncoder
+    scores = ["recall"]
+
     encoder = LabelEncoder()
     y_train = encoder.fit_transform(y_train)
 
-    # Train model
-    model = neighbors.KNeighborsClassifier(n_jobs=-1)
+    for score in scores:
+        print("# Tuning hyper-parameters for %s" % score)
+        print()
 
-    new_params = find_best_parameters(model, X_train, y_train)
+        clf = GridSearchCV(model, params, cv=5)
+        clf.fit(X_train, y_train)
 
-
-    model = model.set_params(n_neighbors = new_params['n_neighbors'], algorithm = new_params['algorithm'])
-
-    model.fit(X_train, y_train)
-
-    # Test model
-    y_pred = model.predict(X_test)
-
-    # How did we do?
-    y_test = encoder.fit_transform(y_test)
-    make_confusion_matrix(model, X_train, y_train, X_test, y_test)
-
-    # Return stuff
-    return model, y_pred
-
-# TODO Fejl med gridsearch. score bruges ikke rigtigt.
-def find_best_parameters(model, X_train, y_train):
-    params = {
-        'n_neighbors': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        'algorithm': ['ball_tree', 'auto', 'kd_tree', 'brute']
-    }
-    score = ['precision', 'recall']
-
-    clf = GridSearchCV(model, param_grid=params, cv=5, scoring='%s_macro' % score)
-    clf.fit(X_train, y_train)
-
-    mean = clf.cv_results_['mean_test_score']
-    print(mean)
-
+    print("Best parameters set found on development set:")
+    print()
     print(clf.best_params_)
+    print()
+    print("Grid scores on development set:")
+    print()
+    means = clf.cv_results_['mean_test_score']
+    stds = clf.cv_results_['std_test_score']
+    for mean, std, params in zip(means, stds, clf.cv_results_['params']):
+        print("%0.3f (+/-%0.03f) for %r"
+              % (mean, std * 2, params))
+    print()
+
+    print("Detailed classification report:")
+    print()
+    print("The model is trained on the full development set.")
+    print("The scores are computed on the full evaluation set.")
+    print()
+    y_true, y_pred = y_test, clf.predict(X_test)
+    print(classification_report(y_true, y_pred))
+    print()
 
     return clf.best_params_
 
 
 if __name__ == '__main__':
+    '''
+    path = "C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/"
+    X_train,  y_train, X_test, y_test = load_idx(path)
+    '''
+    path = "C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/"
+    X_train, y_train, X_test, y_test = load_orl(path)
 
-    # a = input("Type in either 'MNIST' or 'ORL'.")
-    model, y_pred = nnc_classify('ORL')
+    perceptron_bp(X_train, y_train, 1)
 
 
+    # cm = ncc_sub(2,X_train, y_train, X_test)
+    # model, y_pred = nnc_classify(X_train, y_train, X_test)
+    # ncc_classify(X_train,y_train,X_test, y_test)
+    # pca = PCA(n_components=2)
+    # pca_X_train = pca.fit_transform(X_train)
+    # pca_X_test = pca.fit_transform(X_test)
 
-    print(model)
+    # ncc_classify(X_train, y_train, X_test, y_test)
+    # cm = ncc_sub(2, X_train, y_train, X_test)
 
-    print(y_pred)
+    print(1)
