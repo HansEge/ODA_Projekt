@@ -209,14 +209,14 @@ def nnc_classify(dataset):
         return -1, -1
 
     if dataset == "ORL":
-        path = "C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/"
+        path = "C:/Users/stinu/OneDrive/Desktop/Computerteknologi/ODA/ODA_Projekt/Projekt/samples/"
         orl_data, orl_lbls = load_orl(path)
         orl_data = convert_orl_to_vector(orl_data)
 
         model, y_pred = nnc_orl(orl_data, orl_lbls)
 
     if dataset == "MNIST":
-        path = "C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/"
+        path ="C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/"
         X_train, y_train, X_test, y_test = load_idx(path)
 
         model = neighbors.KNeighborsClassifier(n_jobs=-1)
@@ -247,7 +247,6 @@ def nnc_orl(data, labls):
 
     new_params = find_best_parameters(model, X_train, y_train)
 
-
     model = model.set_params(n_neighbors = new_params['n_neighbors'], algorithm = new_params['algorithm'])
 
     model.fit(X_train, y_train)
@@ -268,7 +267,7 @@ def find_best_parameters(model, X_train, y_train):
         'n_neighbors': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
         'algorithm': ['ball_tree', 'auto', 'kd_tree', 'brute']
     }
-    score = ['precision', 'recall']
+    score = 'recall'
 
     clf = GridSearchCV(model, param_grid=params, cv=5, scoring='%s_macro' % score)
     clf.fit(X_train, y_train)
@@ -285,8 +284,6 @@ if __name__ == '__main__':
 
     # a = input("Type in either 'MNIST' or 'ORL'.")
     model, y_pred = nnc_classify('ORL')
-
-
 
     print(model)
 
