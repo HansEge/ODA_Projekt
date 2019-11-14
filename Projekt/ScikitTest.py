@@ -288,32 +288,78 @@ def ncc_sub(k, X_train, y_train, X_test):
     return labels
 
 
-def perceptron_bp(X_train, y_train, eta):
+def perceptron_bp_train(X_train, y_train, eta):
 
     # Initial weights and bias
+    y_train = y_train-1
     w = np.zeros((len(np.unique(y_train)), X_train.shape[1]))
     x = np.ones((len(X_train), 1))
     w0 = np.zeros((len(w), 1))
-    li = np.zeros((40, len(X_train)))
+    li = np.zeros((len(np.unique(y_train)), len(X_train)))
 
     # Make decision function more compact
-    x_tilde = np.concatenate((x, X_train),1)
+    x_tilde = np.concatenate((x, X_train), 1)
     w_tilde = np.concatenate((w0, w), 1)
 
+    # Make random w with numbers from -0.5 to 0.5
     w_tilde = np.random.rand(w_tilde.shape[0], w_tilde.shape[1]) - 0.5
+    w_tilde_prev = w_tilde.copy()
 
-    g = w_tilde.dot(np.transpose(x_tilde))
+    # Update w_tilde 200 times or until stop condition has been reached
+    for iterations in range(200):
+        w_tilde_prev = w_tilde.copy()
+        g = w_tilde.dot(np.transpose(x_tilde))
 
-    # Determine classes
-    for i in range(li.shape[1]):
-        for j in range(40):
-            if y_train[i] == j:
-                li[j][i] = 1
-            else:
-                li[j][i] = -1
+        # Determine classes
+        for i in range(li.shape[1]):
+            for j in range(li.shape[0]):
+                if y_train[i] == j:
+                    li[j][i] = 1
+                else:
+                    li[j][i] = -1
 
-    f = np.multiply(g, li)
-    return
+        f = np.multiply(g, li)
+        xi = np.zeros((len(np.unique(y_train)), X_train.shape[0], X_train.shape[1]+1))
+
+        # Take out samples that are misclassified and store them in xi which is a 40x280x1201 matrix
+        for i in range(f.shape[0]):
+            for j in range(f.shape[1]):
+                if f[i][j] <= 0:
+                    xi[i][j] = x_tilde[j]
+
+        jp = np.zeros_like(w_tilde)
+
+        # Make li a 280x1201 matrix so jp can be calculated
+        for i in range(xi.shape[0]):
+            jp[i] = np.sum(xi[i,:] * np.tile(li[i].reshape(-1,1), jp.shape[1]), axis=0)
+
+        # Update w_tilde
+        w_tilde = w_tilde+eta*jp
+
+        if w_tilde.all == w_tilde_prev.all:
+            print("Finished after " + str(iterations) + " iterations")
+            break
+
+    return w_tilde
+
+
+def perceptron_bp_test(X_test, y_test, w):
+
+    x_test_tilde = np.column_stack((np.ones(X_test.shape[0]), X_test))  # adding ones to x vectors
+
+    g = x_test_tilde @ w.T
+    best_match = np.argmax(g, axis=1)
+
+    y_test = y_test-1
+
+    correct_pred = 0
+    for i in range(len(y_test)):
+        if best_match[i] == y_test[i]:
+            correct_pred = correct_pred+1
+
+    accuracy = correct_pred/len(y_test)
+
+    return best_match, accuracy
 
 
 # TODO Fejl med gridsearch. score bruges ikke rigtigt.
@@ -361,15 +407,16 @@ def find_best_parameters(model, X, y, params):
 
 
 if __name__ == '__main__':
-    '''
-    path = "C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/"
+
+    path = "C:/Users/stinu/OneDrive/Desktop/Computerteknologi/ODA/ODA_Projekt/Projekt/samples/"
     X_train,  y_train, X_test, y_test = load_idx(path)
-    '''
-    path = "C:/Users/stinu/Desktop/RandomSkole/ODA/Projekt/samples/"
+    '''    
+    path = "C:/Users/stinu/OneDrive/Desktop/Computerteknologi/ODA/ODA_Projekt/Projekt/samples/"
     X_train, y_train, X_test, y_test = load_orl(path)
+    '''
+    w_matrix = perceptron_bp_train(X_train, y_train, 0.01)
 
-    perceptron_bp(X_train, y_train, 1)
-
+    matches, accuracy = perceptron_bp_test(X_test, y_test, w_matrix)
 
     # cm = ncc_sub(2,X_train, y_train, X_test)
     # model, y_pred = nnc_classify(X_train, y_train, X_test)
@@ -381,4 +428,5 @@ if __name__ == '__main__':
     # ncc_classify(X_train, y_train, X_test, y_test)
     # cm = ncc_sub(2, X_train, y_train, X_test)
 
-    print(1)
+    print(accuracy)
+    print(matches)
