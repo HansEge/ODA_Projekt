@@ -78,6 +78,62 @@ def load_orl(path):
 
     return X_train, y_train, X_test, y_test
 
+# https://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html#sphx-glr-auto-examples-model-selection-plot-confusion-matrix-py
+def confusion_matrix_blue(y_test, y_pred, title):
+
+    # Compute confusion matrix
+    cm = confusion_matrix(y_test, y_pred)
+    # Only use the labels that appear in the data
+    classes = np.unique(y_test)
+
+    fig, ax = plt.subplots()
+    im = ax.imshow(cm, interpolation='none', cmap=plt.cm.gray_r)
+    ax.figure.colorbar(im, ax=ax)
+    # We want to show all ticks...
+    ax.set(xticks=np.arange(cm.shape[1]),
+           yticks=np.arange(cm.shape[0]),
+           # ... and label them with the respective list entries
+           xticklabels=classes, yticklabels=classes,
+           title=title,
+           ylabel='True label',
+           xlabel='Predicted label')
+
+    # Rotate the tick labels and set their alignment.
+    plt.setp(ax.get_xticklabels(), rotation=90, ha="right",
+             rotation_mode="anchor")
+
+    # Loop over data dimensions and create text annotations.
+    fmt = 'd'
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], fmt),
+                    ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    fig.tight_layout()
+
+    return ax
+
+
+def plot_confusion_matrix(y_test, y_pred, title='Confusion matrix', cmap=plt.cm.gray_r):
+
+    y_test = y_test-1
+    y_pred = y_pred-1
+    df_confusion = pd.crosstab(y_test, y_pred, rownames=['Actual'], colnames=['Predicted'], margins=True)
+
+    plt.matshow(df_confusion, cmap=cmap) # imshow
+    #plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(df_confusion.columns))
+    plt.xticks(tick_marks, df_confusion.columns, rotation=45)
+    plt.yticks(tick_marks, df_confusion.index)
+    #plt.tight_layout()
+    plt.ylabel(df_confusion.index.name)
+    plt.xlabel(df_confusion.columns.name)
+
+    return
+
+
 # TODO Something is wrong here... "Could not decode [1 2 3... 40] to [1 2 3... 40] labels."
 def make_confusion_matrix(model, X_train, y_train, X_test, y_test):
 
@@ -285,13 +341,21 @@ def ncc_sub(k, X_train, y_train, X_test):
         # Remove subclasses and make int
         labels[i] = int(labels[i].split('_')[0])
 
-    return labels
+    # Calculate accuracy
+    correct_pred = 0
+    for i in range(len(y_test)):
+        if labels[i] == y_test[i]:
+            correct_pred = correct_pred + 1
+
+    accuracy = correct_pred / len(y_test)
+
+    return labels, accuracy
 
 
 def perceptron_bp_train(X_train, y_train, eta):
 
     # Initial weights and bias
-    y_train = y_train-1
+    y_train = y_train-1  # Make classes go from 0-39.
     w = np.zeros((len(np.unique(y_train)), X_train.shape[1]))
     x = np.ones((len(X_train), 1))
     w0 = np.zeros((len(w), 1))
@@ -306,11 +370,11 @@ def perceptron_bp_train(X_train, y_train, eta):
     w_tilde_prev = w_tilde.copy()
 
     # Update w_tilde 200 times or until stop condition has been reached
-    for iterations in range(200):
+    for iterations in range(10):
         w_tilde_prev = w_tilde.copy()
         g = w_tilde.dot(np.transpose(x_tilde))
 
-        # Determine classes
+        # Determine classes as 1 or -1
         for i in range(li.shape[1]):
             for j in range(li.shape[0]):
                 if y_train[i] == j:
@@ -336,6 +400,7 @@ def perceptron_bp_train(X_train, y_train, eta):
         # Update w_tilde
         w_tilde = w_tilde+eta*jp
 
+        # If w_tilde no longer changes value, break out of loop
         if w_tilde.all == w_tilde_prev.all:
             print("Finished after " + str(iterations) + " iterations")
             break
@@ -343,13 +408,14 @@ def perceptron_bp_train(X_train, y_train, eta):
     return w_tilde
 
 
-def perceptron_bp_test(X_test, y_test, w):
+def perceptron_test(X_test, y_test, w):
 
     x_test_tilde = np.column_stack((np.ones(X_test.shape[0]), X_test))  # adding ones to x vectors
 
-    g = x_test_tilde @ w.T
+    g = np.dot(x_test_tilde, np.transpose(w))
     best_match = np.argmax(g, axis=1)
 
+    # Made an oopsie when making perceptron. This is a quick workaround
     y_test = y_test-1
 
     correct_pred = 0
@@ -360,6 +426,40 @@ def perceptron_bp_test(X_test, y_test, w):
     accuracy = correct_pred/len(y_test)
 
     return best_match, accuracy
+
+# TODO Sørg for at køre alle klasser igennem.
+def perceptron_mse_train(X_train, y_train):
+
+    # Initial weights and bias
+    w = np.zeros((len(np.unique(y_train)), X_train.shape[1]))
+    x = np.ones((len(X_train), 1))
+    w0 = np.zeros((len(w), 1))
+    b = np.zeros((len(np.unique(y_train)), len(X_train)))
+
+    X = np.concatenate((x, X_train), 1)
+    X = X.transpose()
+    W = np.concatenate((w0, w), 1)
+    XX = X.dot(X.transpose())
+    I = np.identity(np.shape(X)[0])
+
+    for i in range(b.shape[1]):
+        for j in range(b.shape[0]):
+            if y_train[i] == j:
+                b[j][i] = 1
+            else:
+                b[j][i] = -1
+
+    if np.shape(X)[0] < np.shape(X)[1]:
+        for e in np.arange(10 ** (-8), 1, 10 ** (-6)):
+            XXr = XX + e * I
+            if np.linalg.matrix_rank(XXr) == np.shape(X)[0]:
+                break
+        X_dagger = np.linalg.inv(XXr).dot(X)
+    else:
+        X_dagger = np.linalg.inv(XX).dot(X)
+
+    W = X_dagger * b
+    return W
 
 
 # TODO Fejl med gridsearch. score bruges ikke rigtigt.
@@ -410,15 +510,21 @@ if __name__ == '__main__':
 
     path = "C:/Users/stinu/OneDrive/Desktop/Computerteknologi/ODA/ODA_Projekt/Projekt/samples/"
     X_train,  y_train, X_test, y_test = load_idx(path)
-    '''    
-    path = "C:/Users/stinu/OneDrive/Desktop/Computerteknologi/ODA/ODA_Projekt/Projekt/samples/"
-    X_train, y_train, X_test, y_test = load_orl(path)
-    '''
-    w_matrix = perceptron_bp_train(X_train, y_train, 0.01)
 
-    matches, accuracy = perceptron_bp_test(X_test, y_test, w_matrix)
+    # path = "C:/Users/stinu/OneDrive/Desktop/Computerteknologi/ODA/ODA_Projekt/Projekt/samples/"
+    # X_train, y_train, X_test, y_test = load_orl(path)
 
-    # cm = ncc_sub(2,X_train, y_train, X_test)
+    # w_matrix = perceptron_bp_train(X_train, y_train, 0.01)
+
+    # confusion_matrix_blue(y_test, matches, "CM for perceptron BP")
+    # plt.show()
+
+    w_matrix = perceptron_mse_train(X_train[:1000], y_train[:1000])
+    matches, accuracy = perceptron_test(X_test, y_test[:1000], w_matrix)
+
+    #plot_confusion_matrix(y_test, matches)
+
+    # matches, accuracy = ncc_sub(5, X_train, y_train, X_test)
     # model, y_pred = nnc_classify(X_train, y_train, X_test)
     # ncc_classify(X_train,y_train,X_test, y_test)
     # pca = PCA(n_components=2)
