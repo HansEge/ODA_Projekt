@@ -104,8 +104,8 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/Projekt/ScikitTest.py</url>
-          <line>461</line>
-          <option name="timeStamp" value="31" />
+          <line>394</line>
+          <option name="timeStamp" value="67" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

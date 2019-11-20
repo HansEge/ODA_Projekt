@@ -3,6 +3,8 @@ import pandas as pd
 import os
 import matplotlib.pyplot as plt
 import scipy.io as sio
+import sns as sns
+from numpy.linalg import matrix_rank
 from sklearn import neighbors
 
 '''
@@ -14,6 +16,7 @@ from PIL import Image
 # Skal åbenbart bruges til 3D plot
 from mpl_toolkits.mplot3d import Axes3D
 
+import seaborn as sns;
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors.nearest_centroid import NearestCentroid
 from sklearn.preprocessing import StandardScaler, LabelEncoder
@@ -78,61 +81,23 @@ def load_orl(path):
 
     return X_train, y_train, X_test, y_test
 
-# https://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html#sphx-glr-auto-examples-model-selection-plot-confusion-matrix-py
-def confusion_matrix_blue(y_test, y_pred, title):
 
-    # Compute confusion matrix
+def plot_confusion_matrix3(y_test, y_pred):
+
     cm = confusion_matrix(y_test, y_pred)
-    # Only use the labels that appear in the data
-    classes = np.unique(y_test)
+    df_cm = pd.DataFrame(cm, index=np.unique(y_test)+1, columns=np.unique(y_test)+1)
+    df_cm.index.name = 'Actual'
+    df_cm.columns.name = 'Predicted'
+    plt.figure(figsize=(13,9))
+    sns.set(font_scale=1.4)
+    ax = sns.heatmap(df_cm, cmap="Blues", linewidths=.7, square=False, annot=True, annot_kws={"size": 10}, fmt="d")
+    bottom, top = ax.get_ylim()
+    ax.set_ylim(bottom + 0.5, top - 0.5)
 
-    fig, ax = plt.subplots()
-    im = ax.imshow(cm, interpolation='none', cmap=plt.cm.gray_r)
-    ax.figure.colorbar(im, ax=ax)
-    # We want to show all ticks...
-    ax.set(xticks=np.arange(cm.shape[1]),
-           yticks=np.arange(cm.shape[0]),
-           # ... and label them with the respective list entries
-           xticklabels=classes, yticklabels=classes,
-           title=title,
-           ylabel='True label',
-           xlabel='Predicted label')
-
-    # Rotate the tick labels and set their alignment.
-    plt.setp(ax.get_xticklabels(), rotation=90, ha="right",
-             rotation_mode="anchor")
-
-    # Loop over data dimensions and create text annotations.
-    fmt = 'd'
-    thresh = cm.max() / 2.
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            ax.text(j, i, format(cm[i, j], fmt),
-                    ha="center", va="center",
-                    color="white" if cm[i, j] > thresh else "black")
-    fig.tight_layout()
-
-    return ax
-
-
-def plot_confusion_matrix(y_test, y_pred, title='Confusion matrix', cmap=plt.cm.gray_r):
-
-    y_test = y_test-1
-    y_pred = y_pred-1
-    df_confusion = pd.crosstab(y_test, y_pred, rownames=['Actual'], colnames=['Predicted'], margins=True)
-
-    plt.matshow(df_confusion, cmap=cmap) # imshow
-    #plt.title(title)
-    plt.colorbar()
-    tick_marks = np.arange(len(df_confusion.columns))
-    plt.xticks(tick_marks, df_confusion.columns, rotation=45)
-    plt.yticks(tick_marks, df_confusion.index)
-    #plt.tight_layout()
-    plt.ylabel(df_confusion.index.name)
-    plt.xlabel(df_confusion.columns.name)
+    plt.tight_layout()
+    plt.show()
 
     return
-
 
 # TODO Something is wrong here... "Could not decode [1 2 3... 40] to [1 2 3... 40] labels."
 def make_confusion_matrix(model, X_train, y_train, X_test, y_test):
@@ -167,12 +132,6 @@ def make_confusion_matrix(model, X_train, y_train, X_test, y_test):
     cm.show()
 
     return
-
-
-def scale_mnist(Xtrain, Xtest):
-    Xtrain = StandardScaler().fit_transform(Xtrain)
-    Xtest = StandardScaler().fit_transform(Xtest)
-    return Xtrain, Xtest
 
 
 # https://towardsdatascience.com/pca-using-python-scikit-learn-e653f8989e60
@@ -272,42 +231,27 @@ def convert_orl_to_vector(orl_data):
 # TODO make this have the same structure as nnc_classify
 # Perform Nearest class centroid classifier of original data
 def ncc_classify(X_train, y_train, X_test, y_test):
+    hyper_param = True
 
-    model = NearestCentroid()
-    params = {
-        'n_neighbors': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        'algorithm': ['kd_tree', 'auto', 'ball_tree', 'brute']
-    }
+    if hyper_param == True:
+        params = {
+            'dist': ['euclidean', 'manhattan'],
+        }
+        best_accuracy = 0
+        for i in range(0,2):
+            model = NearestCentroid(metric=params['dist'][i])
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
 
-    new_params = find_best_parameters(model, X_train, y_train, params)
-    model.set_params(n_neighbors=new_params['n_neighbors'], algorithm=new_params['algorithm'])
-
-    model.fit(X_train, y_train)
-
-    y_pred = model.predict(X_test)
-    make_confusion_matrix(model, X_train, y_train, X_test, y_test)
+            accuracy = model.score(X_test, y_test)
+            if accuracy > best_accuracy:
+                best_accuracy = accuracy
+                best_param = model.metric
+        model = NearestCentroid(metric=best_param)
+    plot_confusion_matrix3(y_test, y_pred)
+    print(model.metric)
 
     return model, y_pred
-
-
-# Perform Nearest neighbor classifier of original data (NOT PCA)
-def nnc_classify(X_train, y_train, X_test, y_test):
-
-        params = {
-            'n_neighbors': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            'algorithm': ['kd_tree', 'auto', 'ball_tree', 'brute']
-        }
-
-        model = neighbors.KNeighborsClassifier(n_neighbors=2, algorithm='auto')
-        new_params = find_best_parameters(model, X_train[:100], y_train[:100], params)
-
-        model = model.set_params(n_neighbors=new_params['n_neighbors'], algorithm=new_params['algorithm'])
-
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
-        make_confusion_matrix(model, X_train, y_train, X_test, y_test)
-
-        return model, y_pred
 
 
 def ncc_sub(k, X_train, y_train, X_test):
@@ -352,16 +296,52 @@ def ncc_sub(k, X_train, y_train, X_test):
     return labels, accuracy
 
 
-def perceptron_bp_train(X_train, y_train, eta):
+# Perform Nearest neighbor classifier of original data (NOT PCA)
+def nnc_classify(X_train, y_train, X_test, y_test):
+
+    # This takes hours to complete!!
+    hyper_param = False
+
+    if hyper_param == True:
+        params = {
+            'n_neighbors': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        }
+        best_accuracy = 0
+        for i in range(len(params['n_neighbors'])):
+            model = neighbors.KNeighborsClassifier(n_neighbors=params['n_neighbors'][i], algorithm='auto')
+            model.fit(X_train, y_train)
+            model.predict(X_test)
+
+            accuracy = model.score(X_test, y_test)
+            if accuracy > best_accuracy:
+                best_accuracy = accuracy
+                best_param = model.n_neighbors
+        model = neighbors.KNeighborsClassifier(n_neighbors=best_param)
+
+    if hyper_param == False:
+        model = neighbors.KNeighborsClassifier(n_neighbors=1, n_jobs=-1)
+
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    accuracy = model.score(X_test, y_test)
+    plot_confusion_matrix3(y_test, y_pred)
+
+    return y_pred, accuracy
+
+
+def perceptron_bp_train(X_train, y_train, X_test, y_test, eta):
+
+    # Makes it easier calculating li
+    if len(np.unique(y_train)) > 10:
+        y_train = y_train - 1  # Make classes go from 0-39.
 
     # Initial weights and bias
-    y_train = y_train-1  # Make classes go from 0-39.
     w = np.zeros((len(np.unique(y_train)), X_train.shape[1]))
     x = np.ones((len(X_train), 1))
     w0 = np.zeros((len(w), 1))
     li = np.zeros((len(np.unique(y_train)), len(X_train)))
 
-    # Make decision function more compact
+    # Add bias and ones to weights and data input
     x_tilde = np.concatenate((x, X_train), 1)
     w_tilde = np.concatenate((w0, w), 1)
 
@@ -370,7 +350,7 @@ def perceptron_bp_train(X_train, y_train, eta):
     w_tilde_prev = w_tilde.copy()
 
     # Update w_tilde 200 times or until stop condition has been reached
-    for iterations in range(10):
+    for iterations in range(50):
         w_tilde_prev = w_tilde.copy()
         g = w_tilde.dot(np.transpose(x_tilde))
 
@@ -382,10 +362,12 @@ def perceptron_bp_train(X_train, y_train, eta):
                 else:
                     li[j][i] = -1
 
+        # Multiply g and li element wise
         f = np.multiply(g, li)
         xi = np.zeros((len(np.unique(y_train)), X_train.shape[0], X_train.shape[1]+1))
 
-        # Take out samples that are misclassified and store them in xi which is a 40x280x1201 matrix
+        # Take out samples that are misclassified and store them in xi which is a 40x280x1201(ORL) or
+        # 10x60000x785(MNIST) matrix
         for i in range(f.shape[0]):
             for j in range(f.shape[1]):
                 if f[i][j] <= 0:
@@ -393,9 +375,9 @@ def perceptron_bp_train(X_train, y_train, eta):
 
         jp = np.zeros_like(w_tilde)
 
-        # Make li a 280x1201 matrix so jp can be calculated
+        # Make li a 280x1201(ORL) or 60000x785(MNIST) matrix so jp can be calculated
         for i in range(xi.shape[0]):
-            jp[i] = np.sum(xi[i,:] * np.tile(li[i].reshape(-1,1), jp.shape[1]), axis=0)
+            jp[i] = np.sum(xi[i, :] * np.tile(li[i].reshape(-1, 1), jp.shape[1]), axis=0)
 
         # Update w_tilde
         w_tilde = w_tilde+eta*jp
@@ -405,7 +387,7 @@ def perceptron_bp_train(X_train, y_train, eta):
             print("Finished after " + str(iterations) + " iterations")
             break
 
-    return w_tilde
+    return perceptron_test(X_test, y_test, w_tilde)
 
 
 def perceptron_test(X_test, y_test, w):
@@ -416,7 +398,7 @@ def perceptron_test(X_test, y_test, w):
     best_match = np.argmax(g, axis=1)
 
     # Made an oopsie when making perceptron. This is a quick workaround
-    y_test = y_test-1
+    # y_test = y_test-1
 
     correct_pred = 0
     for i in range(len(y_test)):
@@ -428,7 +410,7 @@ def perceptron_test(X_test, y_test, w):
     return best_match, accuracy
 
 # TODO Sørg for at køre alle klasser igennem.
-def perceptron_mse_train(X_train, y_train):
+def perceptron_mse_train(X_train, y_train, X_test, y_test):
 
     # Initial weights and bias
     w = np.zeros((len(np.unique(y_train)), X_train.shape[1]))
@@ -442,6 +424,9 @@ def perceptron_mse_train(X_train, y_train):
     XX = X.dot(X.transpose())
     I = np.identity(np.shape(X)[0])
 
+    D = len(X[:, 1])
+    N = len(X[0])
+
     for i in range(b.shape[1]):
         for j in range(b.shape[0]):
             if y_train[i] == j:
@@ -449,17 +434,23 @@ def perceptron_mse_train(X_train, y_train):
             else:
                 b[j][i] = -1
 
-    if np.shape(X)[0] < np.shape(X)[1]:
+    if N < D:
         for e in np.arange(10 ** (-8), 1, 10 ** (-6)):
-            XXr = XX + e * I
-            if np.linalg.matrix_rank(XXr) == np.shape(X)[0]:
+            tempXX_r = XX + e * I
+            if matrix_rank(tempXX_r) == D:
+                XX_r = tempXX_r
+                X_dagger = np.linalg.inv(XX_r) @ X
                 break
-        X_dagger = np.linalg.inv(XXr).dot(X)
     else:
-        X_dagger = np.linalg.inv(XX).dot(X)
+        # Make sure matrix is not singular
+        X_dagger = np.linalg.inv(XX+10 ** (-10)*I) @ X
 
-    W = X_dagger * b
-    return W
+
+    for i in range(len(np.unique(y_train))):
+        tempW = X_dagger @ b[i]
+        W[i] = tempW
+
+    return perceptron_test(X_test, y_test, W)
 
 
 # TODO Fejl med gridsearch. score bruges ikke rigtigt.
@@ -514,13 +505,34 @@ if __name__ == '__main__':
     # path = "C:/Users/stinu/OneDrive/Desktop/Computerteknologi/ODA/ODA_Projekt/Projekt/samples/"
     # X_train, y_train, X_test, y_test = load_orl(path)
 
-    # w_matrix = perceptron_bp_train(X_train, y_train, 0.01)
+    pca_train = PCA(n_components=2)
+    pca_train.fit_transform(np.transpose(X_train))
+
+    pca_test = PCA(n_components=2)
+    pca_test.fit_transform(np.transpose(X_test))
 
     # confusion_matrix_blue(y_test, matches, "CM for perceptron BP")
     # plt.show()
 
-    w_matrix = perceptron_mse_train(X_train[:1000], y_train[:1000])
-    matches, accuracy = perceptron_test(X_test, y_test[:1000], w_matrix)
+    # orl_data = sio.loadmat(path + "orl_data.mat")
+    # orl_lbls = sio.loadmat(path + "orl_lbls.mat")
+
+    # images = convert_orl_to_vector(orl_data)
+
+    # fig = plt.figure(figsize=(8, 8))
+    # plt.gray()
+    # plt.gca().axes.get_yaxis().set_visible(False)
+    # plt.title("ORL faces taken from different angles")
+    # columns = 5
+    # rows = 2
+    # for i in range(1, columns * rows + 1):
+    #     img = images[i-1]
+    #     fig.add_subplot(rows, columns, i)
+    #     plt.imshow(img)
+    # plt.show()
+
+    # w_matrix = perceptron_mse_train(X_train[:1000], y_train[:1000])
+    # matches, accuracy = perceptron_test(X_test, y_test[:1000], w_matrix)
 
     #plot_confusion_matrix(y_test, matches)
 
@@ -531,8 +543,11 @@ if __name__ == '__main__':
     # pca_X_train = pca.fit_transform(X_train)
     # pca_X_test = pca.fit_transform(X_test)
 
-    # ncc_classify(X_train, y_train, X_test, y_test)
-    # cm = ncc_sub(2, X_train, y_train, X_test)
-
+    # model, y_pred = ncc_classify(X_train, y_train, X_test, y_test)
+    # y_pred, accuracy = ncc_sub(5, X_train, y_train, X_test)
+    # y_pred, accuracy = nnc_classify(X_train, y_train, X_test, y_test)
+    #y_pred, accuracy = perceptron_bp_train(X_train, y_train, X_test, y_test, 0.01)
+    y_pred, accuracy = perceptron_mse_train(X_train, y_train, X_test, y_test)
+    plot_confusion_matrix3(y_test, y_pred)
+    print(y_pred)
     print(accuracy)
-    print(matches)
